@@ -57,6 +57,7 @@ class GeneralTraceAdapter:
         last = int(last)
 
         unit_stat = self.get_stat_for_units(units)
+        print(units, unit_stat)
 
         first_row, last_row = self.lookup_rows_for_values(first, last, unit_stat)
 
@@ -298,17 +299,15 @@ def downsample_copy_first(src, dest, downsample):
 def downsample_copy_mean(src, dest, downsample):
     if downsample < 1:
         raise ValueError('Downsample=0 not supported in downsample_copy_mean')
-    d = 0
-    r = 0
-    dr = 0
-    l = len(src)
-    while r < l:
-        dest[dr] += src[r]
-        d += 1
-        if d == downsample:
-            dest[dr] /= downsample  # take mean
-            dr += 1
-            d = 0
-        r += 1
-    if d != 0:
-        dest[dr] /= d  # take mean
+    cnt = 0
+    idx = 0
+    for offset in range(0, len(src)+1):
+        dest[idx] += src[offset]
+        cnt += 1
+        if cnt == downsample:
+            dest[idx] /= downsample
+            cnt = 0
+            idx += 1
+
+    if cnt:
+        dest[idx] /= cnt
