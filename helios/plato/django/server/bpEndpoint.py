@@ -29,10 +29,12 @@ import numpy as np
 from plato.backend.adapters.branch_training_trace.adapter import BranchTrainingTraceAdapter
 from plato.backend.adapters.pevent_trace.adapter import PeventTraceAdapter
 from plato.backend.adapters.sparta_statistics.adapter import SpartaStatisticsAdapter
+from plato.backend.adapters.perfsight.adapter import PerfSightAdapter
 from plato.backend.common import logtime, synchronized, synchronizedFine, countactive
 from plato.backend.datasources.branch_training_trace.datasource import BranchTrainingDatasource
 from plato.backend.datasources.pevent_trace.datasource import PeventDataSource
 from plato.backend.datasources.sparta_statistics.datasource import SpartaDataSource
+from plato.backend.datasources.perfsight.datasource import PerfSightDataSource
 from plato.backend.processors.branch_training_heatmap.adapter import BranchTrainingHeatMapAdapter
 from plato.backend.processors.branch_training_heatmap.generator import BranchTrainingHeatMapGenerator
 from plato.backend.processors.branch_training_line_plot.generator import BranchTrainingLinePlotGenerator
@@ -124,6 +126,7 @@ class bpEndpoint(AsyncWebsocketConsumer):
         it and then go cache the reader for it
         '''
         isHdf5File = path.endswith("hdf5")
+        isCsvFile = path.endswith("csv")
 
         if isHdf5File:
             if BranchTrainingDatasource.can_read(path):
@@ -132,6 +135,8 @@ class bpEndpoint(AsyncWebsocketConsumer):
                 return PeventDataSource.get_source_information(path), "pevent-trace"
             else:
                 raise ValueError("unknown hdf5 type, pevent and branch training data sources cannot read this")
+        elif isCsvFile:
+            return PerfSightDataSource.get_source_information(path), "perfsight-line"
         else:
             return SpartaDataSource.get_source_information(path), "sparta-statistics"
 
@@ -202,6 +207,8 @@ class bpEndpoint(AsyncWebsocketConsumer):
             bpEndpoint.getShpBranchProfileHtmlGenerator(processorIdObj.uuid)
         elif processor == "pevent-trace-generator":
             bpEndpoint.getPeventTraceGenerator(processorIdObj.uuid)
+        elif processor == "perfsight-line-plot-generator":
+            bpEndpoint.getPerfSightLinePlotGenerator(processorIdObj.uuid)
         else:
             raise ValueError(f"unknown processor type {processor}")
 
@@ -218,6 +225,7 @@ class bpEndpoint(AsyncWebsocketConsumer):
         returnValue["result"] = "in-progress"
         hdf5GlobPattern = jsonData.get('globPattern', "*hdf5")
         dbGlobPattern = jsonData.get('globPattern', "*db")
+        csvGlobPattern = jsonData.get('globPattern', "*csv")
 
         self.sendMessage(returnValue)
 
@@ -233,10 +241,13 @@ class bpEndpoint(AsyncWebsocketConsumer):
 
         hdf5Files = list(filter(os.path.isfile, directory.glob(hdf5GlobPattern)))
 
+        csvFiles = list(filter(os.path.isfile, directory.glob(csvGlobPattern)))
+
         returnValue['result'] = 'partial'
         returnValue['sources'] = []
 
-        for i, currentFile in enumerate(hdf5Files + dbFiles):
+        accepted_files = hdf5Files + dbFiles + csvFiles
+        for i, currentFile in enumerate(accepted_files):
             # need the canonical path of the file to generate a UUID
             relativePath = currentFile.relative_to(directory)
             currentFile = realpath(currentFile)
@@ -265,7 +276,7 @@ class bpEndpoint(AsyncWebsocketConsumer):
 
             returnValue['sources'].append(newDict)
 
-            if i + 1 != len(hdf5Files + dbFiles):
+            if i + 1 != len(accepted_files):
                 self.sendMessage(returnValue)
 
         returnValue['result'] = 'complete'
@@ -397,7 +408,6 @@ class bpEndpoint(AsyncWebsocketConsumer):
                     yExtents = [-1, 1]
                 else:
                     yExtents = [np.nanmin(result[1:]), np.nanmax(result[1:])]  # Skip the first row (units)
-
                 responseValue["processorSpecific"]["numSeries"] = result.shape[0]
                 responseValue["processorSpecific"]["pointsPerSeries"] = result.shape[1]
                 responseValue["processorSpecific"]["seriesBlobOffset"] = 0
@@ -421,6 +431,21 @@ class bpEndpoint(AsyncWebsocketConsumer):
                 resultBin = next(itertools.islice(histograms.values(), 0, 1))[1].astype(dtype = 'f4').tobytes()
                 for v in histograms.values():
                     resultBin += v[0].astype(dtype = 'f4').tobytes()
+
+            elif processor.processor == "perfsight-line-plot-generator":
+                pslp = bpEndpoint.getPerfSightLinePlotGenerator(processor.uuid)
+
+                result = pslp.generate_lines(first, last, **kwargs)
+
+                if result.shape[1] == 0:
+                    yExtents = [-1, 1]
+                else:
+                    yExtents = [np.nanmin(result[1:]), np.nanmax(result[1:])]  # Skip the first row (units)
+                responseValue["processorSpecific"]["numSeries"] = result.shape[0]
+                responseValue["processorSpecific"]["pointsPerSeries"] = result.shape[1]
+                responseValue["processorSpecific"]["seriesBlobOffset"] = 0
+                responseValue["processorSpecific"]["yExtents"] = yExtents
+                resultBin = result.astype(dtype = 'f4', copy = False).tobytes()
 
             else:
                 raise ValueError(f"{processorId} isn't in the database, can't do a lookup")
@@ -637,6 +662,8 @@ class bpEndpoint(AsyncWebsocketConsumer):
                 return PeventDataSource(path)
             else:
                 raise ValueError("unknown type of file, can't choose data source")
+        elif path.endswith("csv"):
+            return PerfSightDataSource(path)
         else:
             return SpartaDataSource(path)
 
@@ -726,6 +753,25 @@ class bpEndpoint(AsyncWebsocketConsumer):
         peventTraceGenerator = PeventTraceGenerator(peventTraceAdapter, **json.loads(procIdObj.kwargs))
 
         return peventTraceGenerator
+
+    @staticmethod
+    @cache.cache('perfSightLinePlot', expire = 3600)
+    @logtime(logger)
+    def getPerfSightLinePlotGenerator(processorId):
+
+        procIdObj, path = bpEndpoint.lookupProcessorId(processorId)
+
+        # load source data
+        perfSightDataSource = bpEndpoint.getDataSource(path)
+        logger.debug(f'List of stats are: {perfSightDataSource.stats}')
+
+        # constructor adapter
+        perfSightAdapter = PerfSightAdapter(perfSightDataSource)
+
+        # construct generator
+        linePlotGenerator = GeneralTraceLinePlotGenerator(perfSightAdapter, **json.loads(procIdObj.kwargs))
+
+        return linePlotGenerator
 
     @staticmethod
     @cache.cache('simDbStatsAdapter', expire = 3600)

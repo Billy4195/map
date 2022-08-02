@@ -99,6 +99,7 @@ const viewer = new function () {
         [SimDbCorrelationWidget.typename]:   SimDbCorrelationWidget,
         [PeventHeatmapWidget.typename]:      PeventHeatmapWidget,
         [PeventWaterfallWidget.typename]:    PeventWaterfallWidget,
+        [PerfSightLinePlotWidget.typename]:  PerfSightLinePlotWidget,
     }
 
     if (Options.SHOW_TEST_WIDGETS) {
