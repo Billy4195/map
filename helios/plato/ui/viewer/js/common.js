@@ -27,7 +27,8 @@ const Processors = {
     SHP_BRANCH_PROFILE: 'shp-branch-profile-generator',
     SIMDB_LINE_PLOT: 'simdb-line-plot-generator',
     SIMDB_CORRELATION_DATA: 'simdb-get-all-data-generator',
-    PEVENT_TRACE: 'pevent-trace-generator'
+    PEVENT_TRACE: 'pevent-trace-generator',
+    PERFSIGHT: 'perfsight-line-plot-generator',
 }
 
 const StatTypes = {
@@ -39,12 +40,14 @@ const StatTypes = {
 const DataTypes = {
     SIMDB: 'sparta-statistics',
     SHP_TRAINING_TRACE: 'branch-predictor-training-trace',
-    PEVENT_TRACE: 'pevent-trace'
+    PEVENT_TRACE: 'pevent-trace',
+    PERFSIGHT_LINE: 'perfsight-line'
 }
 
 const DataTypesShorthands = {
     [DataTypes.SIMDB]: 'sparta',
     [DataTypes.SHP_TRAINING_TRACE]: 'bp',
+    [DataTypes.PERFSIGHT]: 'ps',
 }
 
 // Get a shorthand
