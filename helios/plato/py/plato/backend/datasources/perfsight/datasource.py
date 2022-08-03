@@ -17,7 +17,7 @@ class PerfSightDataSource:
         self._pdf = pd.read_csv(filename)
         if 'cycle' in self._pdf:
             val_cols = self._pdf.columns.drop("cycle")
-            self._pdf[val_cols] = self._pdf[val_cols].diff() # use diff() because counters are accumulated
+            self._pdf[val_cols] = self._pdf[val_cols].diff().fillna(self._pdf[val_cols].iloc[0]) # use diff() because counters are accumulated
 
         info("spent {}ms building dataframe".format((time.time() - start)) * 1000)
 
