@@ -7,7 +7,7 @@
 SCRIPT=`realpath $0`
 SCRIPTPATH=`dirname $SCRIPT`
 MY_CONDA_ENV=plato
-if [[ "${CONDA_PREFIX##*/}" != $MY_CONDA_ENV ]]; then
+if [[ "${CONDA_PREFIX##*/}" != $MY_CONDA_ENV && -d $SCRIPTPATH/../miniforge3 ]]; then
   source $SCRIPTPATH/../miniforge3/etc/profile.d/conda.sh
   conda activate $MY_CONDA_ENV
 fi
