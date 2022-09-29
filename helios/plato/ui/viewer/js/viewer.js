@@ -100,6 +100,7 @@ const viewer = new function () {
         [PeventHeatmapWidget.typename]:      PeventHeatmapWidget,
         [PeventWaterfallWidget.typename]:    PeventWaterfallWidget,
         [PerfSightLinePlotWidget.typename]:  PerfSightLinePlotWidget,
+        [FuncTLPlotWidget.typename]:         FuncTLPlotWidget,
     }
 
     if (Options.SHOW_TEST_WIDGETS) {

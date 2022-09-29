@@ -29,6 +29,7 @@ const Processors = {
     SIMDB_CORRELATION_DATA: 'simdb-get-all-data-generator',
     PEVENT_TRACE: 'pevent-trace-generator',
     PERFSIGHT: 'perfsight-line-plot-generator',
+    FUNCTL: 'funcTL-plot-generator',
 }
 
 const StatTypes = {
@@ -41,7 +42,8 @@ const DataTypes = {
     SIMDB: 'sparta-statistics',
     SHP_TRAINING_TRACE: 'branch-predictor-training-trace',
     PEVENT_TRACE: 'pevent-trace',
-    PERFSIGHT_LINE: 'perfsight-line'
+    PERFSIGHT_LINE: 'perfsight-line',
+    FUNCTL: 'funcTL',
 }
 
 const DataTypesShorthands = {

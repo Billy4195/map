@@ -30,11 +30,13 @@ from plato.backend.adapters.branch_training_trace.adapter import BranchTrainingT
 from plato.backend.adapters.pevent_trace.adapter import PeventTraceAdapter
 from plato.backend.adapters.sparta_statistics.adapter import SpartaStatisticsAdapter
 from plato.backend.adapters.perfsight.adapter import PerfSightAdapter
+from plato.backend.adapters.funcTL.adapter import FuncTLAdapter
 from plato.backend.common import logtime, synchronized, synchronizedFine, countactive
 from plato.backend.datasources.branch_training_trace.datasource import BranchTrainingDatasource
 from plato.backend.datasources.pevent_trace.datasource import PeventDataSource
 from plato.backend.datasources.sparta_statistics.datasource import SpartaDataSource
 from plato.backend.datasources.perfsight.datasource import PerfSightDataSource
+from plato.backend.datasources.funcTL.datasource import FuncTLDataSource
 from plato.backend.processors.branch_training_heatmap.adapter import BranchTrainingHeatMapAdapter
 from plato.backend.processors.branch_training_heatmap.generator import BranchTrainingHeatMapGenerator
 from plato.backend.processors.branch_training_line_plot.generator import BranchTrainingLinePlotGenerator
@@ -43,6 +45,7 @@ from plato.backend.processors.branch_training_table.generator import BranchTrain
 from plato.backend.processors.general_line_plot.generator import GeneralTraceLinePlotGenerator
 from plato.backend.processors.pevent_trace_generator.generator import PeventTraceGenerator
 from plato.backend.processors.sparta_statistics.generator import SpartaStatsGenerator
+from plato.backend.processors.funcTL.generator import FuncTLGenerator
 from plato.backend.units import Units
 from .models import DataId, ProcessorId, LongFunctionCall
 
@@ -127,6 +130,7 @@ class bpEndpoint(AsyncWebsocketConsumer):
         '''
         isHdf5File = path.endswith("hdf5")
         isCsvFile = path.endswith("csv")
+        isFeatherFile = path.endswith("feather")
 
         if isHdf5File:
             if BranchTrainingDatasource.can_read(path):
@@ -137,6 +141,8 @@ class bpEndpoint(AsyncWebsocketConsumer):
                 raise ValueError("unknown hdf5 type, pevent and branch training data sources cannot read this")
         elif isCsvFile:
             return PerfSightDataSource.get_source_information(path), "perfsight-line"
+        elif isFeatherFile:
+            return FuncTLDataSource.get_source_information(path), "funcTL"
         else:
             return SpartaDataSource.get_source_information(path), "sparta-statistics"
 
@@ -209,6 +215,8 @@ class bpEndpoint(AsyncWebsocketConsumer):
             bpEndpoint.getPeventTraceGenerator(processorIdObj.uuid)
         elif processor == "perfsight-line-plot-generator":
             bpEndpoint.getPerfSightLinePlotGenerator(processorIdObj.uuid)
+        elif processor == "funcTL-plot-generator":
+            bpEndpoint.getFuncTLGenerator(processorIdObj.uuid)
         else:
             raise ValueError(f"unknown processor type {processor}")
 
@@ -226,6 +234,7 @@ class bpEndpoint(AsyncWebsocketConsumer):
         hdf5GlobPattern = jsonData.get('globPattern', "*hdf5")
         dbGlobPattern = jsonData.get('globPattern', "*db")
         csvGlobPattern = jsonData.get('globPattern', "*csv")
+        featherGlobPattern = jsonData.get('globPattern', "*feather")
 
         self.sendMessage(returnValue)
 
@@ -243,10 +252,12 @@ class bpEndpoint(AsyncWebsocketConsumer):
 
         csvFiles = list(filter(os.path.isfile, directory.glob(csvGlobPattern)))
 
+        featherFiles = list(filter(os.path.isfile, directory.glob(featherGlobPattern)))
+
         returnValue['result'] = 'partial'
         returnValue['sources'] = []
 
-        accepted_files = hdf5Files + dbFiles + csvFiles
+        accepted_files = hdf5Files + dbFiles + csvFiles + featherFiles
         for i, currentFile in enumerate(accepted_files):
             # need the canonical path of the file to generate a UUID
             relativePath = currentFile.relative_to(directory)
@@ -447,6 +458,13 @@ class bpEndpoint(AsyncWebsocketConsumer):
                 responseValue["processorSpecific"]["yExtents"] = yExtents
                 resultBin = result.astype(dtype = 'f4', copy = False).tobytes()
 
+            elif processor.processor == "funcTL-plot-generator":
+                print("get data")
+                fp = bpEndpoint.getFuncTLGenerator(processor.uuid)
+
+                grids = fp.generate_grids(first, last)
+                responseValue["processorSpecific"]["grids"] = grids
+                resultBin = None
             else:
                 raise ValueError(f"{processorId} isn't in the database, can't do a lookup")
 
@@ -664,6 +682,8 @@ class bpEndpoint(AsyncWebsocketConsumer):
                 raise ValueError("unknown type of file, can't choose data source")
         elif path.endswith("csv"):
             return PerfSightDataSource(path)
+        elif path.endswith("feather"):
+            return FuncTLDataSource(path)
         else:
             return SpartaDataSource(path)
 
@@ -772,6 +792,24 @@ class bpEndpoint(AsyncWebsocketConsumer):
         linePlotGenerator = GeneralTraceLinePlotGenerator(perfSightAdapter, **json.loads(procIdObj.kwargs))
 
         return linePlotGenerator
+
+    @staticmethod
+    @cache.cache('perfSightLinePlot', expire = 3600)
+    @logtime(logger)
+    def getFuncTLGenerator(processorId):
+
+        procIdObj, path = bpEndpoint.lookupProcessorId(processorId)
+
+        # load source data
+        funcTLDataSource = bpEndpoint.getDataSource(path)
+
+        # constructor adapter
+        funcTLAdapter = FuncTLAdapter(funcTLDataSource)
+
+        # construct generator
+        funcTLGenerator = FuncTLGenerator(funcTLAdapter, **json.loads(procIdObj.kwargs))
+
+        return funcTLGenerator
 
     @staticmethod
     @cache.cache('simDbStatsAdapter', expire = 3600)
